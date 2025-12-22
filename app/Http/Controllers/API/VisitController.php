@@ -201,6 +201,33 @@ class VisitController extends Controller
     }
 
     /**
+     * Get the active (started) visit for the authenticated user.
+     */
+    public function active(Request $request)
+    {
+        $user = $request->user();
+
+        $activeVisit = Visit::where('user_id', $user->id)
+            ->where('status', 'started')
+            ->with(['client', 'user', 'baseCommerciale', 'zone'])
+            ->first();
+
+        if (!$activeVisit) {
+            return response()->json([
+                'status' => true,
+                'message' => 'No active visit found',
+                'data' => null
+            ], 200);
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Active visit found',
+            'data' => new VisitResource($activeVisit)
+        ], 200);
+    }
+
+    /**
      * Delete a visit (superadmin only).
      */
     public function destroy(Request $request, $id)

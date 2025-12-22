@@ -50,6 +50,7 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::delete('clients/{client}/photos/{photo}', [ClientController::class, 'deletePhoto']);
 
     // Visit management endpoints
+    Route::get('visits/active', [VisitController::class, 'active']);
     Route::post('visits', [VisitController::class, 'store']);
     Route::post('visits/{visit}/terminate', [VisitController::class, 'terminate']);
     Route::delete('visits/{visit}', [VisitController::class, 'destroy']);
