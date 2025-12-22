@@ -29,6 +29,8 @@ class VisitResource extends JsonResource
             'longitude' => $this->longitude ? (float) $this->longitude : null,
             'termination_distance' => $this->termination_distance ? (float) $this->termination_distance : null,
             'terminated_outside_range' => $this->terminated_outside_range,
+            'distance_exceed_reason' => $this->distance_exceed_reason,
+            'distance_exceed_reason_other' => $this->distance_exceed_reason_other,
             'client' => $this->when($this->relationLoaded('client'), function () {
                 return [
                     'id' => $this->client->id,

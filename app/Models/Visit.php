@@ -23,6 +23,8 @@ class Visit extends Model
         'longitude',
         'termination_distance',
         'terminated_outside_range',
+        'distance_exceed_reason',
+        'distance_exceed_reason_other',
     ];
 
     protected $casts = [

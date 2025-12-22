@@ -12,6 +12,22 @@ use Illuminate\Support\Facades\Validator;
 class VisitController extends Controller
 {
     /**
+     * Maximum allowed distance (in meters) between user and client location for visits.
+     */
+    private const MAX_ALLOWED_DISTANCE = 300;
+
+    /**
+     * Predefined reasons for exceeding distance limit.
+     */
+    public const DISTANCE_EXCEED_REASONS = [
+        'client_moved' => 'Le client a déménagé',
+        'gps_error' => 'Erreur GPS / Signal faible',
+        'client_outside' => 'Client rencontré à l\'extérieur',
+        'wrong_coordinates' => 'Coordonnées client incorrectes',
+        'other' => 'Autres',
+    ];
+
+    /**
      * Store a newly created visit for a specific client.
      */
     public function store(Request $request)
@@ -110,20 +126,6 @@ class VisitController extends Controller
     {
         $user = $request->user();
 
-        $validator = Validator::make($request->all(), [
-            'status' => 'required|in:completed,aborted',
-            'latitude' => 'required|numeric|between:-90,90',
-            'longitude' => 'required|numeric|between:-180,180',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
         $visit = Visit::with('client')->findOrFail($id);
 
         // Check if user owns the visit
@@ -145,15 +147,49 @@ class VisitController extends Controller
             ], 422);
         }
 
-        // Check GPS proximity (must be within 300 meters of the client)
+        // Calculate distance first to determine validation rules
         $distance = $this->calculateDistance(
-            $request->latitude,
-            $request->longitude,
+            $request->latitude ?? 0,
+            $request->longitude ?? 0,
             $visit->client->latitude,
             $visit->client->longitude
         );
 
-        $isOutsideRange = $distance > 300;
+        $isOutsideRange = $distance > self::MAX_ALLOWED_DISTANCE;
+
+        // Build validation rules - require reason if outside range
+        $validationRules = [
+            'status' => 'required|in:completed,aborted',
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
+        ];
+
+        if ($isOutsideRange) {
+            $validReasons = implode(',', array_keys(self::DISTANCE_EXCEED_REASONS));
+            $validationRules['distance_exceed_reason'] = "required|string|in:{$validReasons}";
+            $validationRules['distance_exceed_reason_other'] = 'required_if:distance_exceed_reason,other|nullable|string|max:500';
+        }
+
+        $validator = Validator::make($request->all(), $validationRules);
+
+        if ($validator->fails()) {
+            $response = [
+                'status' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ];
+
+            // If outside range and missing reason, indicate that reason is required
+            if ($isOutsideRange && !$request->has('distance_exceed_reason')) {
+                $response['requires_reason'] = true;
+                $response['distance'] = $distance;
+                $response['max_allowed_distance'] = self::MAX_ALLOWED_DISTANCE;
+                $response['available_reasons'] = self::DISTANCE_EXCEED_REASONS;
+            }
+
+            return response()->json($response, 422);
+        }
+
         $warning = null;
 
         // Log the termination distance
@@ -161,21 +197,29 @@ class VisitController extends Controller
         $visit->terminated_outside_range = $isOutsideRange;
 
         if ($isOutsideRange) {
+            // Store the reason
+            $visit->distance_exceed_reason = $request->distance_exceed_reason;
+            if ($request->distance_exceed_reason === 'other') {
+                $visit->distance_exceed_reason_other = $request->distance_exceed_reason_other;
+            }
+
             // Log the event for monitoring
             \Log::warning('Visit terminated outside allowed range', [
                 'visit_id' => $visit->id,
                 'user_id' => $user->id,
                 'client_id' => $visit->client_id,
                 'distance' => $distance,
-                'allowed_range' => 300,
+                'allowed_range' => self::MAX_ALLOWED_DISTANCE,
                 'status' => $request->status,
                 'latitude' => $request->latitude,
                 'longitude' => $request->longitude,
                 'client_latitude' => $visit->client->latitude,
                 'client_longitude' => $visit->client->longitude,
+                'distance_exceed_reason' => $request->distance_exceed_reason,
+                'distance_exceed_reason_other' => $request->distance_exceed_reason_other,
             ]);
 
-            $warning = "Warning: Visit was terminated {$distance} meters away from the client location. The allowed range is 300 meters.";
+            $warning = "Warning: Visit was terminated {$distance} meters away from the client location. The allowed range is " . self::MAX_ALLOWED_DISTANCE . " meters.";
         }
 
         // Terminate the visit
@@ -198,6 +242,17 @@ class VisitController extends Controller
         }
 
         return response()->json($response, 200);
+    }
+
+    /**
+     * Get available reasons for distance exceed.
+     */
+    public function distanceExceedReasons()
+    {
+        return response()->json([
+            'status' => true,
+            'data' => self::DISTANCE_EXCEED_REASONS
+        ]);
     }
 
     /**

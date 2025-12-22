@@ -51,6 +51,7 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
 
     // Visit management endpoints
     Route::get('visits/active', [VisitController::class, 'active']);
+    Route::get('visits/distance-exceed-reasons', [VisitController::class, 'distanceExceedReasons']);
     Route::post('visits', [VisitController::class, 'store']);
     Route::post('visits/{visit}/terminate', [VisitController::class, 'terminate']);
     Route::delete('visits/{visit}', [VisitController::class, 'destroy']);
