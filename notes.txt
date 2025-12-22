@@ -1,0 +1,23 @@
+- buildings
+    - name
+    - address
+
+- visitors
+    - document_type
+    - country_code
+    - sex
+    - birthdate
+    - surnames
+    - givenNames
+    - documentNumber
+    - nationalityCountryCode
+    - expiryDate
+    - optionalData
+    - optionalData2
+
+
+
+
+
+
+
