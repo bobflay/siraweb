@@ -14,11 +14,15 @@ class Product extends Model
         'product_category_id',
         'unit',
         'packaging',
+        'price',
+        'price_updated_at',
         'is_active',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'price' => 'decimal:2',
+        'price_updated_at' => 'datetime',
     ];
 
     public function productCategory(): BelongsTo
@@ -29,5 +33,10 @@ class Product extends Model
     public function baseProducts(): HasMany
     {
         return $this->hasMany(BaseProduct::class, 'product_id');
+    }
+
+    public function invoiceItems(): HasMany
+    {
+        return $this->hasMany(InvoiceItem::class);
     }
 }

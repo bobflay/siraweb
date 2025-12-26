@@ -8,6 +8,7 @@ use App\Models\Client;
 use App\Models\VisitPhoto;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class ClientController extends Controller
@@ -27,12 +28,17 @@ class ClientController extends Controller
             'page' => 'nullable|integer|min:1',
             'limit' => 'nullable|integer|min:1|max:100',
             'search' => 'nullable|string|max:255',
-            'type' => 'nullable|string|in:Boutique,Supermarché,Demi-grossiste,Grossiste,Distributeur',
+            'type' => 'nullable|string|in:Boutique,Supermarché,Demi-grossiste,Grossiste,Distributeur,Autre,Mamie marché,Etalage,Boulangerie',
             'city' => 'nullable|string|max:255',
             'zone_id' => 'nullable|integer|exists:zones,id',
             'commercial_id' => 'nullable|integer|exists:users,id',
             'has_alert' => 'nullable|boolean',
             'updated_after' => 'nullable|date',
+            // Map bounds filtering (optional) - for filtering clients visible on map viewport
+            'map_north' => 'nullable|numeric|between:-90,90',
+            'map_south' => 'nullable|numeric|between:-90,90',
+            'map_east' => 'nullable|numeric|between:-180,180',
+            'map_west' => 'nullable|numeric|between:-180,180',
         ]);
 
 
@@ -63,6 +69,12 @@ class ClientController extends Controller
             ->filterByCommercial($validated['commercial_id'] ?? null)
             ->filterByAlert($validated['has_alert'] ?? null)
             ->updatedAfter($validated['updated_after'] ?? null)
+            ->withinMapBounds(
+                $validated['map_north'] ?? null,
+                $validated['map_south'] ?? null,
+                $validated['map_east'] ?? null,
+                $validated['map_west'] ?? null
+            )
             ->orderBy('updated_at', 'desc');
 
         // Paginate results
@@ -85,14 +97,31 @@ class ClientController extends Controller
     {
         $user = $request->user();
 
+        // Log incoming request for client creation
+        Log::info('Client creation request received', [
+            'user_id' => $user->id,
+            'user_name' => $user->name,
+            'ip_address' => $request->ip(),
+            'request_data' => $request->all(),
+            'headers' => $request->headers->all(),
+        ]);
+
+        // Get the user's zone
+        $userZone = $user->zones()->first();
+
+        if (!$userZone) {
+            return response()->json([
+                'status' => false,
+                'message' => 'You must be assigned to a zone to create a client'
+            ], 403);
+        }
+
         // Validate request
         $validator = \Validator::make($request->all(), [
             'code' => 'required|string|unique:clients,code|max:255',
             'name' => 'required|string|max:255',
-            'type' => 'required|in:Boutique,Supermarché,Demi-grossiste,Grossiste,Distributeur,Autre',
+            'type' => 'required|in:Boutique,Supermarché,Demi-grossiste,Grossiste,Distributeur,Autre,Mamie marché,Etalage,Boulangerie',
             'potential' => 'required|in:A,B,C',
-            'base_commerciale_id' => 'required|exists:bases_commerciales,id',
-            'zone_id' => 'required|exists:zones,id',
             'manager_name' => 'nullable|string|max:255',
             'phone' => 'required|string|max:255',
             'whatsapp' => 'nullable|string|max:255',
@@ -120,8 +149,8 @@ class ClientController extends Controller
             'name' => $request->name,
             'type' => $request->type,
             'potential' => $request->potential,
-            'base_commerciale_id' => $request->base_commerciale_id,
-            'zone_id' => $request->zone_id,
+            'base_commerciale_id' => $userZone->base_commerciale_id,
+            'zone_id' => $userZone->id,
             'created_by' => $user->id,
             'manager_name' => $request->manager_name,
             'phone' => $request->phone,
@@ -178,7 +207,7 @@ class ClientController extends Controller
         $validator = \Validator::make($request->all(), [
             'code' => 'sometimes|required|string|unique:clients,code,' . $id . '|max:255',
             'name' => 'sometimes|required|string|max:255',
-            'type' => 'sometimes|required|in:Boutique,Supermarché,Demi-grossiste,Grossiste,Distributeur,Autre',
+            'type' => 'sometimes|required|in:Boutique,Supermarché,Demi-grossiste,Grossiste,Distributeur,Autre,Mamie marché,Etalage,Boulangerie',
             'potential' => 'sometimes|required|in:A,B,C',
             'base_commerciale_id' => 'sometimes|required|exists:bases_commerciales,id',
             'zone_id' => 'sometimes|required|exists:zones,id',
@@ -247,13 +276,30 @@ class ClientController extends Controller
      */
     public function uploadPhotos(Request $request, $clientId)
     {
+        $user = $request->user();
+
+        \Log::info('=== Client Photo Upload Started ===', [
+            'user_id' => $user->id,
+            'client_id' => $clientId,
+            'has_photos' => $request->hasFile('photos'),
+            'photos_count' => $request->hasFile('photos') ? count($request->file('photos')) : 0,
+            'type' => $request->input('type'),
+            'latitude' => $request->input('latitude'),
+            'longitude' => $request->input('longitude'),
+            'all_request_keys' => array_keys($request->all()),
+            'files_keys' => array_keys($request->allFiles()),
+        ]);
+
         $client = Client::findOrFail($clientId);
 
         // Check if user has access to this client
-        $user = $request->user();
         $accessibleClients = Client::forUser($user)->pluck('id');
 
         if (!$accessibleClients->contains($client->id)) {
+            \Log::warning('Client photo upload unauthorized', [
+                'user_id' => $user->id,
+                'client_id' => $clientId,
+            ]);
             return response()->json([
                 'status' => false,
                 'message' => 'You are not authorized to add photos to this client'
@@ -272,6 +318,11 @@ class ClientController extends Controller
         ]);
 
         if ($validator->fails()) {
+            \Log::error('Client photo upload validation failed', [
+                'user_id' => $user->id,
+                'client_id' => $clientId,
+                'errors' => $validator->errors()->toArray(),
+            ]);
             return response()->json([
                 'status' => false,
                 'message' => 'Validation failed',
@@ -279,34 +330,82 @@ class ClientController extends Controller
             ], 422);
         }
 
+        \Log::info('Client photo upload validation passed', [
+            'client_id' => $clientId,
+            'client_name' => $client->name,
+        ]);
+
         $uploadedPhotos = [];
 
-        foreach ($request->file('photos') as $photo) {
-            // Store photo in public disk
-            $path = $photo->store('client_photos', 'public');
-
-            // Create photo record
-            $clientPhoto = $client->photos()->create([
-                'visit_id' => null, // No visit association for client photos
-                'file_path' => $path,
-                'file_name' => $photo->getClientOriginalName(),
+        foreach ($request->file('photos') as $index => $photo) {
+            \Log::info('Processing client photo', [
+                'index' => $index,
+                'client_id' => $clientId,
+                'filename' => $photo->getClientOriginalName(),
+                'size' => $photo->getSize(),
                 'mime_type' => $photo->getMimeType(),
-                'file_size' => $photo->getSize(),
-                'type' => $request->input('type', 'other'),
-                'title' => $request->input('title'),
-                'description' => $request->input('description'),
-                'latitude' => $request->input('latitude', 0),
-                'longitude' => $request->input('longitude', 0),
-                'taken_at' => now(),
             ]);
 
-            $uploadedPhotos[] = [
-                'id' => $clientPhoto->id,
-                'url' => Storage::url($path),
-                'file_name' => $clientPhoto->file_name,
-                'type' => $clientPhoto->type,
-            ];
+            try {
+                // Store photo in public disk
+                $path = $photo->store('client_photos', 'public');
+
+                \Log::info('Client photo stored successfully', [
+                    'index' => $index,
+                    'path' => $path,
+                ]);
+
+                // Create photo record
+                $photoData = [
+                    'visit_id' => null, // No visit association for client photos
+                    'file_path' => $path,
+                    'file_name' => $photo->getClientOriginalName(),
+                    'mime_type' => $photo->getMimeType(),
+                    'file_size' => $photo->getSize(),
+                    'type' => $request->input('type', 'other'),
+                    'title' => $request->input('title'),
+                    'description' => $request->input('description'),
+                    'latitude' => $request->input('latitude', 0),
+                    'longitude' => $request->input('longitude', 0),
+                    'taken_at' => now(),
+                ];
+
+                \Log::info('Creating client photo record', [
+                    'index' => $index,
+                    'data' => $photoData,
+                ]);
+
+                $clientPhoto = $client->photos()->create($photoData);
+
+                \Log::info('Client photo record created', [
+                    'index' => $index,
+                    'photo_id' => $clientPhoto->id,
+                    'latitude' => $clientPhoto->latitude,
+                    'longitude' => $clientPhoto->longitude,
+                ]);
+
+                $uploadedPhotos[] = [
+                    'id' => $clientPhoto->id,
+                    'url' => Storage::url($path),
+                    'file_name' => $clientPhoto->file_name,
+                    'type' => $clientPhoto->type,
+                ];
+            } catch (\Exception $e) {
+                \Log::error('Client photo upload failed', [
+                    'index' => $index,
+                    'client_id' => $clientId,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+                throw $e;
+            }
         }
+
+        \Log::info('=== Client Photo Upload Completed ===', [
+            'client_id' => $clientId,
+            'total_uploaded' => count($uploadedPhotos),
+            'photo_ids' => array_column($uploadedPhotos, 'id'),
+        ]);
 
         return response()->json([
             'status' => true,
@@ -320,13 +419,25 @@ class ClientController extends Controller
      */
     public function deletePhoto(Request $request, $clientId, $photoId)
     {
+        $user = $request->user();
+
+        \Log::info('=== Client Photo Delete Started ===', [
+            'user_id' => $user->id,
+            'client_id' => $clientId,
+            'photo_id' => $photoId,
+        ]);
+
         $client = Client::findOrFail($clientId);
 
         // Check if user has access to this client
-        $user = $request->user();
         $accessibleClients = Client::forUser($user)->pluck('id');
 
         if (!$accessibleClients->contains($client->id)) {
+            \Log::warning('Client photo delete unauthorized', [
+                'user_id' => $user->id,
+                'client_id' => $clientId,
+                'photo_id' => $photoId,
+            ]);
             return response()->json([
                 'status' => false,
                 'message' => 'You are not authorized to delete photos from this client'
@@ -335,13 +446,35 @@ class ClientController extends Controller
 
         $photo = $client->photos()->findOrFail($photoId);
 
+        \Log::info('Client photo found for deletion', [
+            'photo_id' => $photo->id,
+            'file_path' => $photo->file_path,
+            'latitude' => $photo->latitude,
+            'longitude' => $photo->longitude,
+        ]);
+
         // Delete file from storage
         if (Storage::disk('public')->exists($photo->file_path)) {
             Storage::disk('public')->delete($photo->file_path);
+            \Log::info('Client photo file deleted from storage', [
+                'photo_id' => $photoId,
+                'file_path' => $photo->file_path,
+            ]);
+        } else {
+            \Log::warning('Client photo file not found in storage', [
+                'photo_id' => $photoId,
+                'file_path' => $photo->file_path,
+            ]);
         }
 
         // Delete database record
         $photo->delete();
+
+        \Log::info('=== Client Photo Delete Completed ===', [
+            'user_id' => $user->id,
+            'client_id' => $clientId,
+            'photo_id' => $photoId,
+        ]);
 
         return response()->json([
             'status' => true,

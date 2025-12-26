@@ -85,6 +85,8 @@ class ProductCategory extends Resource
 
             HasMany::make('Children', 'children', ProductCategory::class),
 
+            HasMany::make('Products', 'products', Product::class),
+
             // Status
             Boolean::make('Active', 'is_active')
                 ->sortable(),

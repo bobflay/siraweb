@@ -39,6 +39,13 @@ class Order extends Resource
     ];
 
     /**
+     * The logical group associated with the resource.
+     *
+     * @var string
+     */
+    public static $group = 'Commandes';
+
+    /**
      * Default ordering.
      */
     public static function indexQuery(NovaRequest $request, $query)
@@ -206,7 +213,13 @@ class Order extends Resource
      */
     public function authorizedToDelete(Request $request)
     {
-        return false;
+        $user = $request->user();
+
+        if (!$user) {
+            return false;
+        }
+
+        return $user->hasRole('ROLE_SUPER_ADMIN') || $user->hasRole('super_admin');
     }
 
     /**

@@ -23,6 +23,9 @@ class VisitPhoto extends Model
         'latitude',
         'longitude',
         'taken_at',
+        'ocr_data',
+        'ocr_processed_at',
+        'ocr_status',
     ];
 
     protected $casts = [
@@ -30,6 +33,8 @@ class VisitPhoto extends Model
         'latitude' => 'decimal:7',
         'longitude' => 'decimal:7',
         'taken_at' => 'datetime',
+        'ocr_data' => 'array',
+        'ocr_processed_at' => 'datetime',
     ];
 
     /**

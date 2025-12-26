@@ -12,7 +12,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        DB::statement("ALTER TABLE clients MODIFY COLUMN type ENUM('Boutique', 'Supermarché', 'Demi-grossiste', 'Grossiste', 'Distributeur', 'Autre', 'Mamie marché', 'Etale', 'Boulangerie')");
+        DB::statement("ALTER TABLE clients MODIFY COLUMN type ENUM('Boutique', 'Supermarché', 'Demi-grossiste', 'Grossiste', 'Distributeur', 'Autre', 'Mamie marché', 'Etalage', 'Boulangerie')");
     }
 
     /**

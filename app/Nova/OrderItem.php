@@ -38,11 +38,11 @@ class OrderItem extends Resource
     ];
 
     /**
-     * Indicates if the resource should be displayed in the sidebar.
+     * The logical group associated with the resource.
      *
-     * @var bool
+     * @var string
      */
-    public static $displayInNavigation = false;
+    public static $group = 'Commandes';
 
     /**
      * Get the fields displayed by the resource.
@@ -154,6 +154,12 @@ class OrderItem extends Resource
      */
     public function authorizedToDelete(Request $request)
     {
-        return false;
+        $user = $request->user();
+
+        if (!$user) {
+            return false;
+        }
+
+        return $user->hasRole('ROLE_SUPER_ADMIN') || $user->hasRole('super_admin');
     }
 }

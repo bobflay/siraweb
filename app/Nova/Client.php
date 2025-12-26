@@ -89,6 +89,9 @@ class Client extends Resource
                     'Demi-grossiste' => 'Demi-grossiste',
                     'Grossiste' => 'Grossiste',
                     'Distributeur' => 'Distributeur',
+                    'Mamie marché' => 'Mamie marché',
+                    'Etalage' => 'Étalage',
+                    'Boulangerie' => 'Boulangerie',
                     'Autre' => 'Autre',
                 ])
                 ->sortable()

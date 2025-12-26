@@ -48,6 +48,9 @@ class ClientTypeFilter extends Filter
             'Demi-grossiste' => 'Demi-grossiste',
             'Grossiste' => 'Grossiste',
             'Distributeur' => 'Distributeur',
+            'Mamie marché' => 'Mamie marché',
+            'Étalage' => 'Etalage',
+            'Boulangerie' => 'Boulangerie',
             'Autre' => 'Autre',
         ];
     }

@@ -2,11 +2,48 @@
 
 namespace App\Nova;
 
+use Illuminate\Http\Request;
 use Laravel\Nova\Http\Requests\NovaRequest;
 use Laravel\Nova\Resource as NovaResource;
 
 abstract class Resource extends NovaResource
 {
+    /**
+     * Check if user is super admin.
+     */
+    protected static function isSuperAdmin(?object $user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        return $user->hasRole('ROLE_SUPER_ADMIN') || $user->hasRole('super_admin');
+    }
+
+    /**
+     * Determine if the current user can create new resources.
+     */
+    public static function authorizedToCreate(Request $request)
+    {
+        return static::isSuperAdmin($request->user());
+    }
+
+    /**
+     * Determine if the current user can update the given resource.
+     */
+    public function authorizedToUpdate(Request $request)
+    {
+        return static::isSuperAdmin($request->user());
+    }
+
+    /**
+     * Determine if the current user can delete the given resource.
+     */
+    public function authorizedToDelete(Request $request)
+    {
+        return static::isSuperAdmin($request->user());
+    }
+
     /**
      * Build an "index" query for the given resource.
      *

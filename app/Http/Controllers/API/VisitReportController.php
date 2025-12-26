@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use App\Services\InvoiceOcrService;
 
 class VisitReportController extends Controller
 {
@@ -53,6 +54,8 @@ class VisitReportController extends Controller
             'photo_shelves.*' => 'image|mimes:jpeg,jpg,png|max:10240',
             'photos_other' => 'nullable|array',
             'photos_other.*' => 'image|mimes:jpeg,jpg,png|max:10240',
+            'photos_facture' => 'nullable|array',
+            'photos_facture.*' => 'image|mimes:jpeg,jpg,png|max:10240',
 
             // GPS for each photo group (optional, defaults to report GPS)
             'photo_facade_gps' => 'nullable|array',
@@ -64,6 +67,13 @@ class VisitReportController extends Controller
             'photos_other_gps' => 'nullable|array',
             'photos_other_gps.*.latitude' => 'nullable|numeric|between:-90,90',
             'photos_other_gps.*.longitude' => 'nullable|numeric|between:-180,180',
+            'photos_facture_gps' => 'nullable|array',
+            'photos_facture_gps.*.latitude' => 'nullable|numeric|between:-90,90',
+            'photos_facture_gps.*.longitude' => 'nullable|numeric|between:-180,180',
+
+            // Custom titles for other photos (for OCR detection)
+            'photos_other_titles' => 'nullable|array',
+            'photos_other_titles.*' => 'nullable|string|max:255',
         ]);
 
         if ($validator->fails()) {
@@ -184,7 +194,33 @@ class VisitReportController extends Controller
                 ]);
                 foreach ($request->file('photos_other') as $index => $photo) {
                     $gps = $request->input("photos_other_gps.$index", []);
+                    $title = $request->input("photos_other_titles.$index", 'Photo supplémentaire');
                     \Log::info('Uploading other photo', [
+                        'index' => $index,
+                        'filename' => $photo->getClientOriginalName(),
+                        'size' => $photo->getSize(),
+                        'title' => $title,
+                    ]);
+                    $uploadedPhotos[] = $this->uploadPhoto(
+                        $photo,
+                        $report,
+                        $visit,
+                        'other',
+                        $title,
+                        $gps['latitude'] ?? $request->latitude,
+                        $gps['longitude'] ?? $request->longitude
+                    );
+                }
+            }
+
+            // Process facture photos (invoice photos with OCR)
+            if ($request->hasFile('photos_facture')) {
+                \Log::info('Processing facture photos', [
+                    'count' => count($request->file('photos_facture'))
+                ]);
+                foreach ($request->file('photos_facture') as $index => $photo) {
+                    $gps = $request->input("photos_facture_gps.$index", []);
+                    \Log::info('Uploading facture photo', [
                         'index' => $index,
                         'filename' => $photo->getClientOriginalName(),
                         'size' => $photo->getSize(),
@@ -193,10 +229,11 @@ class VisitReportController extends Controller
                         $photo,
                         $report,
                         $visit,
-                        'other',
-                        'Photo supplémentaire',
+                        'facture',
+                        'Facture',
                         $gps['latitude'] ?? $request->latitude,
-                        $gps['longitude'] ?? $request->longitude
+                        $gps['longitude'] ?? $request->longitude,
+                        true // Process OCR
                     );
                 }
             }
@@ -242,13 +279,14 @@ class VisitReportController extends Controller
     /**
      * Helper method to upload a photo
      */
-    private function uploadPhoto($file, $report, $visit, $type, $title, $latitude, $longitude)
+    private function uploadPhoto($file, $report, $visit, $type, $title, $latitude, $longitude, $processOcr = false)
     {
         \Log::info('uploadPhoto called', [
             'report_id' => $report->id,
             'visit_id' => $visit->id,
             'type' => $type,
             'filename' => $file->getClientOriginalName(),
+            'processOcr' => $processOcr,
         ]);
 
         try {
@@ -257,6 +295,10 @@ class VisitReportController extends Controller
             \Log::info('File stored successfully', [
                 'path' => $path,
             ]);
+
+            // Check if OCR should be processed based on title containing 'facture'
+            $ocrService = app(InvoiceOcrService::class);
+            $shouldProcessOcr = $processOcr || $ocrService->isInvoicePhoto($title);
 
             $photoData = [
                 'visit_id' => $visit->id,
@@ -270,6 +312,7 @@ class VisitReportController extends Controller
                 'latitude' => $latitude,
                 'longitude' => $longitude,
                 'taken_at' => now(),
+                'ocr_status' => $shouldProcessOcr ? 'pending' : null,
             ];
 
             \Log::info('Creating photo record', ['data' => $photoData]);
@@ -279,6 +322,43 @@ class VisitReportController extends Controller
             \Log::info('Photo created successfully', [
                 'photo_id' => $photo->id,
             ]);
+
+            // Process OCR if needed
+            if ($shouldProcessOcr) {
+                \Log::info('Processing OCR for facture photo', [
+                    'photo_id' => $photo->id,
+                    'title' => $title,
+                ]);
+
+                try {
+                    $photo->update(['ocr_status' => 'processing']);
+                    $ocrData = $ocrService->processInvoice($path, 'public');
+
+                    if ($ocrData) {
+                        $photo->update([
+                            'ocr_data' => $ocrData,
+                            'ocr_status' => 'completed',
+                            'ocr_processed_at' => now(),
+                        ]);
+                        \Log::info('OCR completed successfully', [
+                            'photo_id' => $photo->id,
+                            'invoice_number' => $ocrData['invoice']['invoice_number'] ?? 'N/A',
+                        ]);
+                    } else {
+                        $photo->update(['ocr_status' => 'failed']);
+                        \Log::warning('OCR returned no data', ['photo_id' => $photo->id]);
+                    }
+                } catch (\Exception $ocrException) {
+                    $photo->update(['ocr_status' => 'failed']);
+                    \Log::error('OCR processing failed', [
+                        'photo_id' => $photo->id,
+                        'error' => $ocrException->getMessage(),
+                    ]);
+                }
+
+                // Refresh the photo to get updated data
+                $photo->refresh();
+            }
 
             return $photo;
 
@@ -322,6 +402,27 @@ class VisitReportController extends Controller
         return response()->json([
             'status' => true,
             'data' => new VisitReportResource($report)
+        ], 200);
+    }
+
+    /**
+     * Get all reports created by the authenticated user for a specific client
+     */
+    public function indexByClient(Request $request, $clientId)
+    {
+        $user = $request->user();
+
+        $reports = VisitReport::with(['photos', 'visit.client'])
+            ->whereHas('visit', function ($query) use ($user, $clientId) {
+                $query->where('user_id', $user->id)
+                      ->where('client_id', $clientId);
+            })
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'status' => true,
+            'data' => VisitReportResource::collection($reports)
         ], 200);
     }
 

@@ -10,6 +10,9 @@ use Laravel\Nova\Fields\HasMany;
 use Laravel\Nova\Fields\DateTime;
 use Laravel\Nova\Fields\ID;
 use Laravel\Nova\Fields\Number;
+use Laravel\Nova\Fields\Text;
+use Laravel\Nova\Fields\Boolean;
+use Laravel\Nova\Fields\Select;
 use Laravel\Nova\Http\Requests\NovaRequest;
 
 class Visit extends Resource
@@ -76,6 +79,7 @@ class Visit extends Resource
             BelongsTo::make('Commercial', 'user', User::class)->readonly(),
             BelongsTo::make('Base Commerciale', 'baseCommerciale', BaseCommerciale::class)->readonly(),
             BelongsTo::make('Zone')->readonly(),
+            BelongsTo::make('Routing Item', 'routingItem', RoutingItem::class)->readonly()->nullable()->hideFromIndex(),
 
             DateTime::make('Started At')->readonly(),
             DateTime::make('Ended At')->readonly()->nullable(),
@@ -96,11 +100,34 @@ class Visit extends Resource
                 ])
                 ->readonly(),
 
+            // Location fields
+            Number::make('Latitude')->readonly()->nullable()->hideFromIndex()->step(0.0000001),
+            Number::make('Longitude')->readonly()->nullable()->hideFromIndex()->step(0.0000001),
+            Number::make('Termination Distance')->readonly()->nullable()->hideFromIndex()->help('Distance in meters from client location when visit ended'),
+            Boolean::make('Terminated Outside Range')->readonly()->hideFromIndex(),
+
+            Select::make('Distance Exceed Reason')
+                ->options([
+                    'client_not_at_location' => 'Client Not at Location',
+                    'gps_error' => 'GPS Error',
+                    'other' => 'Other',
+                ])
+                ->readonly()
+                ->nullable()
+                ->hideFromIndex(),
+
+            Text::make('Distance Exceed Reason Other')
+                ->readonly()
+                ->nullable()
+                ->hideFromIndex()
+                ->help('Custom reason when "Other" is selected'),
+
             DateTime::make('Created At')->hideFromIndex()->readonly(),
 
             // Relationships
             HasOne::make('Report', 'report', VisitReport::class),
             HasMany::make('Alerts', 'alerts', VisitAlert::class),
+            HasMany::make('Photos', 'photos', VisitPhoto::class),
         ];
     }
 

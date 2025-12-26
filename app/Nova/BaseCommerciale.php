@@ -10,6 +10,7 @@ use Laravel\Nova\Fields\Number;
 use Laravel\Nova\Fields\Boolean;
 use Laravel\Nova\Fields\Select;
 use Laravel\Nova\Fields\BelongsToMany;
+use Laravel\Nova\Fields\HasMany;
 use Laravel\Nova\Http\Requests\NovaRequest;
 use Laravel\Nova\Panel;
 
@@ -122,6 +123,8 @@ class BaseCommerciale extends Resource
 
             BelongsToMany::make('Users')
                 ->searchable(),
+
+            HasMany::make('Zones', 'zones', Zone::class),
         ];
     }
 

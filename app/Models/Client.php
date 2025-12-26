@@ -218,4 +218,19 @@ class Client extends Model
 
         return $query->where('updated_at', '>=', $datetime);
     }
+
+    /**
+     * Filter clients within map bounds (bounding box).
+     * Parameters represent the visible map viewport edges.
+     */
+    public function scopeWithinMapBounds(Builder $query, ?float $north, ?float $south, ?float $east, ?float $west): Builder
+    {
+        // If any bound is missing, skip filtering
+        if ($north === null || $south === null || $east === null || $west === null) {
+            return $query;
+        }
+
+        return $query->whereBetween('latitude', [$south, $north])
+                     ->whereBetween('longitude', [$west, $east]);
+    }
 }

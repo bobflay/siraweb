@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Laravel\Nova\Fields\ID;
 use Laravel\Nova\Fields\Text;
 use Laravel\Nova\Fields\Number;
+use Laravel\Nova\Fields\Currency;
 use Laravel\Nova\Fields\BelongsTo;
 use Laravel\Nova\Fields\Boolean;
 use Laravel\Nova\Fields\DateTime;
@@ -88,6 +89,18 @@ class Product extends Resource
             Text::make('Packaging', 'packaging')
                 ->nullable()
                 ->help('Ex: 25kg, 50kg, 12x1L'),
+
+            // Pricing
+            Currency::make('Price', 'price')
+                ->currency('XOF')
+                ->nullable()
+                ->sortable()
+                ->help('Price from latest invoice OCR'),
+
+            DateTime::make('Price Updated At', 'price_updated_at')
+                ->readonly()
+                ->exceptOnForms()
+                ->hideFromIndex(),
 
             // Status
             Boolean::make('Active', 'is_active')

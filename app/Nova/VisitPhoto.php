@@ -205,12 +205,11 @@ class VisitPhoto extends Resource
                 ->hideWhenUpdating()
                 ->exceptOnForms(),
 
-            // Geolocation - hidden when creating from client
+            // Geolocation
             Number::make('Latitude', 'latitude')
                 ->step(0.0000001)
                 ->hideFromIndex()
                 ->default(0)
-                ->hideFromDetail()
                 ->hideWhenCreating()
                 ->readonly(!$isEditableContext),
 
@@ -218,9 +217,20 @@ class VisitPhoto extends Resource
                 ->step(0.0000001)
                 ->hideFromIndex()
                 ->default(0)
-                ->hideFromDetail()
                 ->hideWhenCreating()
                 ->readonly(!$isEditableContext),
+
+            Text::make('GPS Location', function () {
+                if ($this->latitude && $this->longitude && ($this->latitude != 0 || $this->longitude != 0)) {
+                    $lat = number_format($this->latitude, 7);
+                    $lng = number_format($this->longitude, 7);
+                    $mapsUrl = "https://www.google.com/maps?q={$this->latitude},{$this->longitude}";
+                    return "<a href=\"{$mapsUrl}\" target=\"_blank\" class=\"link-default\">{$lat}, {$lng}</a>";
+                }
+                return 'No GPS data';
+            })
+                ->asHtml()
+                ->onlyOnDetail(),
 
             // Timing - hidden when creating
             DateTime::make('Taken At', 'taken_at')

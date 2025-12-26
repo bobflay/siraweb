@@ -79,9 +79,9 @@ class VisitController extends Controller
         if ($distance > 300) {
             return response()->json([
                 'status' => false,
-                'message' => 'You must be within 300 meters of the client location to create a visit',
+                'message' => 'Vous devez être à moins de 300 mètres du client pour créer une visite',
                 'errors' => [
-                    'proximity' => ["Current distance: {$distance} meters"]
+                    'proximity' => ["Distance actuelle: {$distance} mètres"]
                 ]
             ], 422);
         }

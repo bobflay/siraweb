@@ -43,6 +43,9 @@ class VisitReportResource extends JsonResource
                         'latitude' => $photo->latitude ? (float) $photo->latitude : null,
                         'longitude' => $photo->longitude ? (float) $photo->longitude : null,
                         'taken_at' => $photo->taken_at?->toIso8601String(),
+                        'ocr_status' => $photo->ocr_status,
+                        'ocr_data' => $photo->ocr_data,
+                        'ocr_processed_at' => $photo->ocr_processed_at?->toIso8601String(),
                     ];
                 });
             }, []),
